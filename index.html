@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>웹 테트리스 (개선판)</title>
+    <title>웹 테트리스 (랭킹 시스템)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,26 +11,37 @@
     <style>
         body {
             font-family: 'Jua', sans-serif;
-            touch-action: manipulation; /* 모바일에서 더블 탭으로 확대되는 것을 방지 */
+            touch-action: manipulation;
         }
-        /* 버튼 활성 상태 (터치 또는 클릭) */
         .btn-active {
             transform: scale(0.95);
             filter: brightness(0.8);
+        }
+        #game-over-modal {
+            background-color: rgba(0, 0, 0, 0.75);
         }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div class="w-full max-w-lg mx-auto">
-        <h1 class="text-4xl font-bold text-center mb-4 text-cyan-400">테트리스</h1>
+    <div class="w-full max-w-4xl mx-auto">
+        <h1 class="text-4xl font-bold text-center mb-4 text-cyan-400">테트리스 챌린지</h1>
 
-        <div class="bg-gray-800 p-4 rounded-lg shadow-2xl flex flex-col md:flex-row gap-4 items-start justify-center">
-            <!-- 게임 캔버스 -->
-            <canvas id="tetris" width="240" height="480" class="bg-black rounded-md shadow-inner"></canvas>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- 랭킹 보드 -->
+            <div class="bg-gray-800 p-4 rounded-lg shadow-2xl order-3 md:order-1">
+                <h2 class="text-2xl font-semibold text-center text-yellow-400 mb-2">🏆 랭킹 🏆</h2>
+                <ol id="ranking-list" class="space-y-1 text-lg"></ol>
+            </div>
 
-            <!-- 게임 정보 및 컨트롤 -->
-            <div class="flex flex-col items-center justify-start gap-4">
+            <!-- 게임 영역 -->
+            <div class="flex justify-center order-1 md:order-2">
+                 <canvas id="tetris" width="240" height="480" class="bg-black rounded-md shadow-inner"></canvas>
+            </div>
+           
+
+            <!-- 게임 정보 -->
+            <div class="bg-gray-800 p-4 rounded-lg shadow-2xl flex flex-col items-center justify-start gap-4 order-2 md:order-3">
                 <div>
                     <h2 class="text-xl font-semibold text-center">점수</h2>
                     <div id="score" class="text-3xl font-bold text-yellow-400 text-center">0</div>
@@ -39,13 +50,13 @@
                     <h2 class="text-xl font-semibold text-center">다음 블록</h2>
                     <canvas id="next" width="96" height="96" class="bg-black rounded-md mt-1 shadow-inner"></canvas>
                 </div>
+                <div class="w-full">
+                    <h2 class="text-xl font-semibold text-center">레벨</h2>
+                    <div id="level" class="text-3xl font-bold text-purple-400 text-center">1</div>
+                </div>
                 <div>
                     <h2 class="text-xl font-semibold text-center">콤보</h2>
                     <div id="combo" class="text-3xl font-bold text-green-400 text-center">x0</div>
-                </div>
-                 <div id="game-over-message" class="hidden text-center p-4 bg-red-500 bg-opacity-75 rounded-lg">
-                    <h3 class="text-2xl font-bold">게임 오버!</h3>
-                    <button id="restart-button" class="mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg font-bold transition-colors">다시 시작</button>
                 </div>
             </div>
         </div>
@@ -70,63 +81,83 @@
         </div>
     </div>
 
+    <!-- 게임 오버 모달 -->
+    <div id="game-over-modal" class="hidden fixed inset-0 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-2xl text-center">
+            <h3 class="text-3xl font-bold text-red-500 mb-4">게임 오버!</h3>
+            <p class="text-xl mb-2">최종 점수: <span id="final-score" class="font-bold text-yellow-400">0</span></p>
+            <form id="ranking-form" class="flex flex-col gap-4">
+                <input type="text" id="nickname-input" placeholder="닉네임을 입력하세요" class="p-2 rounded bg-gray-700 text-white text-center" maxlength="10">
+                <button type="submit" class="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg font-bold transition-colors">랭킹 등록</button>
+            </form>
+            <button id="restart-button" class="mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg font-bold transition-colors w-full">다시 시작</button>
+        </div>
+    </div>
+
+
     <script>
         // 기본 요소 가져오기
         const canvas = document.getElementById('tetris');
         const context = canvas.getContext('2d');
-        const scoreElement = document.getElementById('score');
-        const gameOverMessage = document.getElementById('game-over-message');
-        const restartButton = document.getElementById('restart-button');
         const nextCanvas = document.getElementById('next');
         const nextContext = nextCanvas.getContext('2d');
+        
+        // UI 요소
+        const scoreElement = document.getElementById('score');
+        const levelElement = document.getElementById('level');
         const comboElement = document.getElementById('combo');
+        const rankingListElement = document.getElementById('ranking-list');
+        
+        // 게임 오버 모달 요소
+        const gameOverModal = document.getElementById('game-over-modal');
+        const finalScoreElement = document.getElementById('final-score');
+        const rankingForm = document.getElementById('ranking-form');
+        const nicknameInput = document.getElementById('nickname-input');
+        const restartButton = document.getElementById('restart-button');
 
         // 게임 상수
         const COLS = 10;
         const ROWS = 20;
         const BLOCK_SIZE = 24;
 
-        // 캔버스 스케일 설정
         context.scale(BLOCK_SIZE, BLOCK_SIZE);
         nextContext.scale(BLOCK_SIZE, BLOCK_SIZE);
 
         // 게임 상태 변수
-        let arena = createMatrix(COLS, ROWS);
-        let score = 0;
-        let gameOver = false;
-        let nextPiece = null;
-        let comboCounter = 0;
-
-        const player = {
-            pos: { x: 0, y: 0 },
-            matrix: null,
-        };
-
-        const colors = [
-            null, '#FF0D72', '#0DC2FF', '#0DFF72', '#F538FF',
-            '#FF8E0D', '#FFE138', '#3877FF',
-        ];
-
-        // 게임 루프 관련 변수
+        let arena, score, gameOver, nextPiece, comboCounter, level, dropInterval, rankings;
         let dropCounter = 0;
-        let dropInterval = 1000;
         let lastTime = 0;
 
-        // 게임 시작
-        playerReset();
-        updateScore();
-        update();
+        const player = { pos: { x: 0, y: 0 }, matrix: null };
 
-        // 빈 행렬 생성
+        const colors = [ null, '#FF0D72', '#0DC2FF', '#0DFF72', '#F538FF', '#FF8E0D', '#FFE138', '#3877FF' ];
+
+        function init() {
+            arena = createMatrix(COLS, ROWS);
+            score = 0;
+            gameOver = false;
+            nextPiece = null;
+            comboCounter = 0;
+            level = 1;
+            dropInterval = 1000;
+            rankings = JSON.parse(localStorage.getItem('tetrisRankings')) || [];
+
+            playerReset();
+            updateScore();
+            updateRankingDisplay();
+            gameOverModal.classList.add('hidden');
+            
+            if (!lastTime) { // requestAnimationFrame이 중복 실행되지 않도록 방지
+                update();
+            }
+        }
+
         function createMatrix(w, h) {
             const matrix = [];
-            while (h--) {
-                matrix.push(new Array(w).fill(0));
-            }
+            while (h--) matrix.push(new Array(w).fill(0));
             return matrix;
         }
 
-        // 테트리스 조각 생성
         function createPiece(type) {
             if (type === 'T') return [[0, 0, 0], [1, 1, 1], [0, 1, 0]];
             if (type === 'O') return [[2, 2], [2, 2]];
@@ -137,31 +168,28 @@
             if (type === 'Z') return [[7, 7, 0], [0, 7, 7], [0, 0, 0]];
         }
 
-        // 화면 그리기
         function draw() {
             context.fillStyle = '#000';
             context.fillRect(0, 0, canvas.width, canvas.height);
-            drawMatrix(arena, { x: 0, y: 0 });
-            drawMatrix(player.matrix, player.pos);
+            drawMatrix(arena, { x: 0, y: 0 }, context);
+            drawMatrix(player.matrix, player.pos, context);
             drawNextPiece();
         }
 
-        // 행렬 그리기 (블록)
-        function drawMatrix(matrix, offset) {
+        function drawMatrix(matrix, offset, ctx) {
             matrix.forEach((row, y) => {
                 row.forEach((value, x) => {
                     if (value !== 0) {
-                        context.fillStyle = colors[value];
-                        context.fillRect(x + offset.x, y + offset.y, 1, 1);
-                        context.strokeStyle = 'rgba(0,0,0,0.5)';
-                        context.lineWidth = 0.1;
-                        context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                        ctx.fillStyle = colors[value];
+                        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+                        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+                        ctx.lineWidth = 0.1;
+                        ctx.strokeRect(x + offset.x, y + offset.y, 1, 1);
                     }
                 });
             });
         }
         
-        // 다음 블록 그리기
         function drawNextPiece() {
             nextContext.fillStyle = '#000';
             nextContext.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
@@ -171,63 +199,42 @@
                 x: (nextCanvas.width / BLOCK_SIZE - matrixSize) / 2,
                 y: (nextCanvas.height / BLOCK_SIZE - matrixSize) / 2,
             };
-            matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) {
-                        nextContext.fillStyle = colors[value];
-                        nextContext.fillRect(x + offset.x, y + offset.y, 1, 1);
-                        nextContext.strokeStyle = 'rgba(0,0,0,0.5)';
-                        nextContext.lineWidth = 0.1;
-                        nextContext.strokeRect(x + offset.x, y + offset.y, 1, 1);
-                    }
-                });
-            });
+            drawMatrix(matrix, offset, nextContext);
         }
 
-        // 블록을 arena에 고정
         function merge(arena, player) {
             player.matrix.forEach((row, y) => {
                 row.forEach((value, x) => {
-                    if (value !== 0) {
-                        arena[y + player.pos.y][x + player.pos.x] = value;
-                    }
+                    if (value !== 0) arena[y + player.pos.y][x + player.pos.x] = value;
                 });
             });
         }
 
-        // 충돌 감지
         function collide(arena, player) {
             const [m, o] = [player.matrix, player.pos];
             for (let y = 0; y < m.length; ++y) {
                 for (let x = 0; x < m[y].length; ++x) {
-                    if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
-                        return true;
-                    }
+                    if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) return true;
                 }
             }
             return false;
         }
         
-        // 블록이 바닥에 닿았을 때 처리
         function handleLock() {
             merge(arena, player);
             const clearedLines = arenaSweep();
-
             if (clearedLines > 0) {
-                const lineScores = [0, 10, 30, 50, 80];
-                score += lineScores[clearedLines];
-                if (comboCounter > 0) {
-                    score += comboCounter * 20; // 콤보 보너스
-                }
+                const lineScores = [0, 100, 300, 500, 800];
+                score += lineScores[clearedLines] * level; // 레벨에 따른 추가 점수
+                if (comboCounter > 0) score += comboCounter * 50 * level;
                 comboCounter++;
             } else {
-                comboCounter = 0; // 라인 제거 못하면 콤보 초기화
+                comboCounter = 0;
             }
             playerReset();
             updateScore();
         }
 
-        // 블록 아래로 내리기
         function playerDrop() {
             if (gameOver) return;
             player.pos.y++;
@@ -238,27 +245,20 @@
             dropCounter = 0;
         }
 
-        // 블록 한번에 내리기 (하드 드롭)
         function playerHardDrop() {
             if (gameOver) return;
-            while (!collide(arena, player)) {
-                player.pos.y++;
-            }
+            while (!collide(arena, player)) player.pos.y++;
             player.pos.y--;
             handleLock();
             dropCounter = 0;
         }
 
-        // 블록 좌우 이동
         function playerMove(dir) {
             if (gameOver) return;
             player.pos.x += dir;
-            if (collide(arena, player)) {
-                player.pos.x -= dir;
-            }
+            if (collide(arena, player)) player.pos.x -= dir;
         }
 
-        // 블록 회전
         function playerRotate(dir) {
             if (gameOver) return;
             const pos = player.pos.x;
@@ -275,18 +275,14 @@
             }
         }
 
-        // 행렬 회전
         function rotate(matrix, dir) {
             for (let y = 0; y < matrix.length; ++y) {
-                for (let x = 0; x < y; ++x) {
-                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
-                }
+                for (let x = 0; x < y; ++x) [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
             }
             if (dir > 0) matrix.forEach(row => row.reverse());
             else matrix.reverse();
         }
 
-        // 플레이어 블록 리셋
         function playerReset() {
             const pieces = 'ILJOTSZ';
             player.matrix = nextPiece || createPiece(pieces[pieces.length * Math.random() | 0]);
@@ -295,17 +291,15 @@
             player.pos.x = (arena[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
             if (collide(arena, player)) {
                 gameOver = true;
-                gameOverMessage.classList.remove('hidden');
+                finalScoreElement.innerText = score;
+                gameOverModal.classList.remove('hidden');
             }
         }
 
-        // 완성된 라인 제거
         function arenaSweep() {
             let clearedLines = 0;
             outer: for (let y = arena.length - 1; y > 0; --y) {
-                for (let x = 0; x < arena[y].length; ++x) {
-                    if (arena[y][x] === 0) continue outer;
-                }
+                for (let x = 0; x < arena[y].length; ++x) if (arena[y][x] === 0) continue outer;
                 const row = arena.splice(y, 1)[0].fill(0);
                 arena.unshift(row);
                 ++y;
@@ -314,74 +308,94 @@
             return clearedLines;
         }
 
-        // 게임 재시작
-        function restartGame() {
-            arena.forEach(row => row.fill(0));
-            score = 0;
-            comboCounter = 0;
-            gameOver = false;
-            gameOverMessage.classList.add('hidden');
-            playerReset();
-            updateScore();
-            if (!gameOver) {
-                update();
-            }
-        }
-
-        // 점수판 업데이트
         function updateScore() {
             scoreElement.innerText = score;
             comboElement.innerText = `x${comboCounter}`;
+            
+            // 난이도 조절
+            const newLevel = Math.floor(score / 1000) + 1;
+            if (newLevel > level) {
+                level = newLevel;
+                dropInterval = Math.max(150, 1000 - (level - 1) * 75); // 레벨당 75ms 감소, 최소 150ms
+            }
+            levelElement.innerText = level;
         }
 
-        // 메인 게임 루프
+        function saveRanking(e) {
+            e.preventDefault();
+            const nickname = nicknameInput.value.trim() || '익명';
+            rankings.push({ name: nickname, score: score });
+            rankings.sort((a, b) => b.score - a.score);
+            rankings = rankings.slice(0, 10); // 상위 10개만 저장
+            localStorage.setItem('tetrisRankings', JSON.stringify(rankings));
+            updateRankingDisplay();
+            rankingForm.classList.add('hidden');
+        }
+
+        function updateRankingDisplay() {
+            rankingListElement.innerHTML = '';
+            if (rankings.length === 0) {
+                rankingListElement.innerHTML = '<li class="text-center text-gray-400">아직 랭킹이 없어요!</li>';
+            } else {
+                rankings.forEach((entry, index) => {
+                    const li = document.createElement('li');
+                    li.className = `flex justify-between p-1 rounded ${index === 0 ? 'bg-yellow-500/30' : ''}`;
+                    li.innerHTML = `
+                        <span class="font-semibold">${index + 1}. ${entry.name}</span>
+                        <span class="font-bold">${entry.score}</span>
+                    `;
+                    rankingListElement.appendChild(li);
+                });
+            }
+        }
+
         function update(time = 0) {
             if (gameOver) return;
             const deltaTime = time - lastTime;
             lastTime = time;
             dropCounter += deltaTime;
-            if (dropCounter > dropInterval) {
-                playerDrop();
-            }
+            if (dropCounter > dropInterval) playerDrop();
             draw();
             requestAnimationFrame(update);
         }
 
-        // 키보드 이벤트 리스너
+        // 이벤트 리스너
         document.addEventListener('keydown', event => {
+            if (gameOver) {
+                if(event.key === 'Escape' || event.key === 'Enter') init();
+                return;
+            };
             if (event.key === 'ArrowLeft') playerMove(-1);
             else if (event.key === 'ArrowRight') playerMove(1);
             else if (event.key === 'ArrowDown') playerDrop();
             else if (event.key === 'ArrowUp') playerRotate(1);
-            else if (event.key === ' ') {
-                event.preventDefault();
-                playerHardDrop();
-            } else if (event.key === 'Escape') {
-                restartGame();
-            }
+            else if (event.key === ' ') { event.preventDefault(); playerHardDrop(); } 
+            else if (event.key === 'Escape') init();
         });
 
-        // 모바일 버튼 이벤트 리스너
+        rankingForm.addEventListener('submit', saveRanking);
+        restartButton.addEventListener('click', init);
+
+        // 모바일 버튼
         const leftBtn = document.getElementById('left-btn');
         const rightBtn = document.getElementById('right-btn');
         const downBtn = document.getElementById('down-btn');
         const rotateBtn = document.getElementById('rotate-btn');
         const upBtn = document.getElementById('up-btn');
-
         function handleBtnPress(btn, action) {
             btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.classList.add('btn-active'); action(); });
             btn.addEventListener('touchend', (e) => { e.preventDefault(); btn.classList.remove('btn-active'); });
             btn.addEventListener('mousedown', (e) => { e.preventDefault(); btn.classList.add('btn-active'); action(); });
             btn.addEventListener('mouseup', (e) => { e.preventDefault(); btn.classList.remove('btn-active'); });
         }
-
         handleBtnPress(leftBtn, () => playerMove(-1));
         handleBtnPress(rightBtn, () => playerMove(1));
         handleBtnPress(downBtn, () => playerDrop());
         handleBtnPress(rotateBtn, () => playerRotate(1));
         handleBtnPress(upBtn, () => playerHardDrop());
-        
-        restartButton.addEventListener('click', restartGame);
+
+        // 게임 시작
+        init();
     </script>
 </body>
 </html>
