@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>웹 테트리스</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Jua', sans-serif;
+            touch-action: manipulation; /* 모바일에서 더블 탭으로 확대되는 것을 방지 */
+        }
+        /* 버튼 활성 상태 (터치 또는 클릭) */
+        .btn-active {
+            transform: scale(0.95);
+            filter: brightness(0.8);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-md mx-auto">
+        <h1 class="text-4xl font-bold text-center mb-4 text-cyan-400">테트리스</h1>
+
+        <div class="bg-gray-800 p-4 rounded-lg shadow-2xl flex flex-col md:flex-row gap-4 items-center justify-center">
+            <!-- 게임 캔버스 -->
+            <canvas id="tetris" width="240" height="480" class="bg-black rounded-md shadow-inner"></canvas>
+
+            <!-- 게임 정보 및 컨트롤 -->
+            <div class="flex flex-col items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-semibold">점수</h2>
+                    <div id="score" class="text-3xl font-bold text-yellow-400">0</div>
+                </div>
+                 <div id="game-over-message" class="hidden text-center p-4 bg-red-500 bg-opacity-75 rounded-lg">
+                    <h3 class="text-2xl font-bold">게임 오버!</h3>
+                    <button id="restart-button" class="mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg font-bold transition-colors">다시 시작</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 모바일 컨트롤 버튼 -->
+        <div class="mt-6 grid grid-cols-3 grid-rows-2 gap-2 md:hidden">
+            <div class="col-span-1 row-span-2 flex items-center justify-center">
+                <button id="rotate-btn" class="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center text-2xl font-bold transition-transform duration-100 ease-in-out">↻</button>
+            </div>
+            <div class="col-start-2">
+                <button id="up-btn" class="w-full h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold transition-transform duration-100 ease-in-out">↑</button>
+            </div>
+            <div class="col-start-2">
+                 <button id="down-btn" class="w-full h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold transition-transform duration-100 ease-in-out">↓</button>
+            </div>
+            <div class="col-start-1 row-start-2">
+                <button id="left-btn" class="w-full h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold transition-transform duration-100 ease-in-out">←</button>
+            </div>
+            <div class="col-start-3 row-start-2">
+                <button id="right-btn" class="w-full h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold transition-transform duration-100 ease-in-out">→</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverMessage = document.getElementById('game-over-message');
+        const restartButton = document.getElementById('restart-button');
+
+        const COLS = 10;
+        const ROWS = 20;
+        const BLOCK_SIZE = 24; // canvas.width / COLS
+
+        context.scale(BLOCK_SIZE, BLOCK_SIZE);
+
+        let arena = createMatrix(COLS, ROWS);
+        let score = 0;
+        let gameOver = false;
+
+        const player = {
+            pos: { x: 0, y: 0 },
+            matrix: null,
+            score: 0,
+        };
+
+        const colors = [
+            null,
+            '#FF0D72', // T
+            '#0DC2FF', // O
+            '#0DFF72', // L
+            '#F538FF', // J
+            '#FF8E0D', // I
+            '#FFE138', // S
+            '#3877FF', // Z
+        ];
+
+        // 게임 루프 관련 변수
+        let dropCounter = 0;
+        let dropInterval = 1000; // 1초
+        let lastTime = 0;
+
+        // 게임 시작
+        playerReset();
+        updateScore();
+        update();
+
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) {
+                matrix.push(new Array(w).fill(0));
+            }
+            return matrix;
+        }
+
+        function createPiece(type) {
+            if (type === 'T') {
+                return [
+                    [0, 0, 0],
+                    [1, 1, 1],
+                    [0, 1, 0],
+                ];
+            } else if (type === 'O') {
+                return [
+                    [2, 2],
+                    [2, 2],
+                ];
+            } else if (type === 'L') {
+                return [
+                    [0, 3, 0],
+                    [0, 3, 0],
+                    [0, 3, 3],
+                ];
+            } else if (type === 'J') {
+                return [
+                    [0, 4, 0],
+                    [0, 4, 0],
+                    [4, 4, 0],
+                ];
+            } else if (type === 'I') {
+                return [
+                    [0, 5, 0, 0],
+                    [0, 5, 0, 0],
+                    [0, 5, 0, 0],
+                    [0, 5, 0, 0],
+                ];
+            } else if (type === 'S') {
+                return [
+                    [0, 6, 6],
+                    [6, 6, 0],
+                    [0, 0, 0],
+                ];
+            } else if (type === 'Z') {
+                return [
+                    [7, 7, 0],
+                    [0, 7, 7],
+                    [0, 0, 0],
+                ];
+            }
+        }
+
+        function draw() {
+            // 캔버스 초기화
+            context.fillStyle = '#000';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 고정된 블록 그리기
+            drawMatrix(arena, { x: 0, y: 0 });
+            // 현재 움직이는 블록 그리기
+            drawMatrix(player.matrix, player.pos);
+        }
+
+        function drawMatrix(matrix, offset) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        context.fillStyle = colors[value];
+                        context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                        // 블록 테두리 효과
+                        context.strokeStyle = 'rgba(0,0,0,0.5)';
+                        context.lineWidth = 0.1;
+                        context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                    }
+                });
+            });
+        }
+
+        function merge(arena, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        arena[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function collide(arena, player) {
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                        (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function playerDrop() {
+            if (gameOver) return;
+            player.pos.y++;
+            if (collide(arena, player)) {
+                player.pos.y--;
+                merge(arena, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+            dropCounter = 0;
+        }
+        
+        function playerHardDrop() {
+            if (gameOver) return;
+            while (!collide(arena, player)) {
+                player.pos.y++;
+            }
+            player.pos.y--;
+            merge(arena, player);
+            playerReset();
+            arenaSweep();
+            updateScore();
+            dropCounter = 0;
+        }
+
+        function playerMove(dir) {
+            if (gameOver) return;
+            player.pos.x += dir;
+            if (collide(arena, player)) {
+                player.pos.x -= dir;
+            }
+        }
+
+        function playerRotate(dir) {
+            if (gameOver) return;
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            while (collide(arena, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [
+                        matrix[x][y],
+                        matrix[y][x],
+                    ] = [
+                        matrix[y][x],
+                        matrix[x][y],
+                    ];
+                }
+            }
+
+            if (dir > 0) {
+                matrix.forEach(row => row.reverse());
+            } else {
+                matrix.reverse();
+            }
+        }
+
+        function playerReset() {
+            const pieces = 'ILJOTSZ';
+            player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+            player.pos.y = 0;
+            player.pos.x = (arena[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+
+            if (collide(arena, player)) {
+                gameOver = true;
+                gameOverMessage.classList.remove('hidden');
+            }
+        }
+
+        function arenaSweep() {
+            let rowCount = 1;
+            outer: for (let y = arena.length - 1; y > 0; --y) {
+                for (let x = 0; x < arena[y].length; ++x) {
+                    if (arena[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+
+                const row = arena.splice(y, 1)[0].fill(0);
+                arena.unshift(row);
+                ++y;
+
+                score += rowCount * 10;
+                rowCount *= 2;
+            }
+        }
+        
+        function restartGame() {
+            arena.forEach(row => row.fill(0));
+            score = 0;
+            gameOver = false;
+            gameOverMessage.classList.add('hidden');
+            playerReset();
+            updateScore();
+            update(); // 게임 루프 다시 시작
+        }
+
+        function updateScore() {
+            scoreElement.innerText = score;
+        }
+
+        // 메인 게임 루프
+        function update(time = 0) {
+            if (gameOver) {
+                return;
+            }
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        // 키보드 이벤트 리스너
+        document.addEventListener('keydown', event => {
+            if (event.key === 'ArrowLeft') {
+                playerMove(-1);
+            } else if (event.key === 'ArrowRight') {
+                playerMove(1);
+            } else if (event.key === 'ArrowDown') {
+                playerDrop();
+            } else if (event.key === 'ArrowUp') {
+                playerRotate(1);
+            } else if (event.key === ' ') { // 스페이스바로 하드 드롭
+                 event.preventDefault(); // 스크롤 방지
+                 playerHardDrop();
+            }
+        });
+
+        // 모바일 버튼 이벤트 리스너
+        const leftBtn = document.getElementById('left-btn');
+        const rightBtn = document.getElementById('right-btn');
+        const downBtn = document.getElementById('down-btn');
+        const rotateBtn = document.getElementById('rotate-btn');
+        const upBtn = document.getElementById('up-btn'); // 하드 드롭 버튼
+
+        function handleBtnPress(btn, action) {
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                btn.classList.add('btn-active');
+                action();
+            });
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                btn.classList.remove('btn-active');
+            });
+             btn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                btn.classList.add('btn-active');
+                action();
+            });
+            btn.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                btn.classList.remove('btn-active');
+            });
+        }
+
+        handleBtnPress(leftBtn, () => playerMove(-1));
+        handleBtnPress(rightBtn, () => playerMove(1));
+        handleBtnPress(downBtn, () => playerDrop());
+        handleBtnPress(rotateBtn, () => playerRotate(1));
+        handleBtnPress(upBtn, () => playerHardDrop());
+        
+        restartButton.addEventListener('click', restartGame);
+
+    </script>
+</body>
+</html>
